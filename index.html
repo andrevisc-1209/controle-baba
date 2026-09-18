@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Pagamento — Babá</title>
+<style>
+  :root{
+    --bg:#faf8f5; --card:#ffffff; --ink:#2b2320; --muted:#8a7f76;
+    --accent:#c9683f; --accent-dark:#a34f2c; --line:#ece5de;
+    --pos:#3d7a4f; --neg:#c04b3f; --chip:#f4ede6;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1c1815; --card:#262019; --ink:#f0e9e2; --muted:#a89a8c;
+      --accent:#e08355; --accent-dark:#f0a077; --line:#3a322a;
+      --pos:#5fb377; --neg:#e0716a; --chip:#332a22;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1c1815; --card:#262019; --ink:#f0e9e2; --muted:#a89a8c;
+    --accent:#e08355; --accent-dark:#f0a077; --line:#3a322a;
+    --pos:#5fb377; --neg:#e0716a; --chip:#332a22;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink); font-family:var(--font);
+    padding:20px 14px 60px;
+  }
+  .wrap{max-width:720px;margin:0 auto;}
+  h1{font-size:1.3rem; margin:4px 0 2px; font-weight:700;}
+  .sub{color:var(--muted); font-size:.85rem; margin-bottom:18px;}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:16px; margin-bottom:14px;
+  }
+  .month-row{
+    display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap;
+  }
+  select, input, button, textarea{
+    font-family:var(--font); font-size:.95rem; border-radius:10px;
+    border:1px solid var(--line); background:var(--card); color:var(--ink);
+    padding:9px 11px;
+  }
+  select#monthSelect{font-weight:700; font-size:1rem; flex:1; min-width:140px;}
+  button{
+    cursor:pointer; border:none; background:var(--accent); color:#fff; font-weight:600;
+    transition:opacity .15s;
+  }
+  button:hover{opacity:.88;}
+  button:disabled{opacity:.5; cursor:default;}
+  button.secondary{
+    background:var(--chip); color:var(--ink); border:1px solid var(--line);
+  }
+  button.icon{padding:6px 10px; font-size:.85rem;}
+  button.danger{background:transparent; color:var(--neg); padding:4px 8px; font-size:.8rem;}
+  .stats{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:4px;}
+  .stat{background:var(--chip); border-radius:12px; padding:10px 12px; text-align:center;}
+  .stat .lbl{font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+  .stat .val{font-size:1.15rem; font-weight:700; margin-top:2px;}
+  .stat .val.pos{color:var(--pos);}
+  .stat .val.neg{color:var(--neg);}
+  .valorMesEdit{display:flex; align-items:center; gap:6px; margin-top:10px; font-size:.8rem; color:var(--muted);}
+  .valorMesEdit input{width:90px; padding:5px 8px; font-size:.85rem;}
+  h2{font-size:1rem; margin:0 0 10px;}
+  .entry{
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:10px 0; border-bottom:1px solid var(--line); gap:10px;
+  }
+  .entry:last-child{border-bottom:none;}
+  .entry .info{flex:1; min-width:0;}
+  .entry .date{font-size:.75rem; color:var(--muted);}
+  .entry .reason{font-size:.9rem; margin-top:1px;}
+  .entry .tag{
+    display:inline-block; font-size:.65rem; padding:1px 7px; border-radius:20px;
+    background:var(--chip); color:var(--accent-dark); margin-left:6px; vertical-align:middle;
+    font-weight:600; text-transform:uppercase;
+  }
+  .entry .right{text-align:right; white-space:nowrap;}
+  .entry .value{font-weight:700;}
+  .entry .payer{font-size:.72rem; color:var(--muted);}
+  .empty{color:var(--muted); font-size:.85rem; text-align:center; padding:20px 0;}
+  form.add{display:flex; flex-direction:column; gap:8px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+  label{font-size:.72rem; color:var(--muted); display:block; margin-bottom:3px;}
+  .field{display:flex; flex-direction:column;}
+  .toggle-add{width:100%; text-align:center; padding:10px;}
+  .overview-row{
+    display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line);
+    font-size:.88rem; cursor:pointer; border-radius:8px; transition:background .12s;
+  }
+  .overview-row:hover, .overview-row:active{background:var(--chip);}
+  .overview-row:last-child{border-bottom:none;}
+  .overview-row .m{font-weight:600;}
+  .overview-row .sub2{color:var(--muted); font-size:.78rem;}
+  .banner{
+    font-size:.78rem; color:var(--muted); text-align:center; padding:8px; background:var(--chip);
+    border-radius:10px; margin-bottom:14px; display:none;
+  }
+  .banner.err{ color:var(--neg); }
+  .tabs{display:flex; gap:6px; margin-bottom:14px;}
+  .tabs button{flex:1; background:var(--chip); color:var(--ink);}
+  .tabs button.active{background:var(--accent); color:#fff;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💰 Controle de pagamento — Babá</h1>
+  <div class="sub">Cacau · pagamento semanal + extras/parcelas</div>
+
+  <div class="banner" id="offlineBanner">Sem conexão com o Airtable agora — os dados não serão salvos até recarregar.</div>
+
+  <div class="tabs">
+    <button id="tabMonthBtn" class="active">Mês</button>
+    <button id="tabOverviewBtn">Visão geral</button>
+  </div>
+
+  <div id="viewMonth">
+    <button class="secondary icon" id="backToOverviewBtn" style="margin-bottom:10px;">← Visão geral</button>
+    <div class="month-row">
+      <select id="monthSelect"></select>
+      <button class="secondary icon" id="newMonthBtn">+ novo mês</button>
+    </div>
+
+    <div class="card">
+      <div class="stats">
+        <div class="stat">
+          <div class="lbl">Valor do mês</div>
+          <div class="val" id="statValorMes">—</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Pago no mês</div>
+          <div class="val" id="statPago">—</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Saldo</div>
+          <div class="val" id="statSaldo">—</div>
+        </div>
+      </div>
+      <div class="valorMesEdit">
+        Valor mensal:
+        <input type="number" id="valorMesInput" step="0.01">
+        <button class="secondary icon" id="saveValorMesBtn">salvar</button>
+      </div>
+      <div class="valorMesEdit" style="margin-top:6px;">
+        <span id="suggestedWeeklyText">Semana sugerida: —</span>
+      </div>
+      <button class="secondary" id="genWeeklyBtn" style="width:100%; margin-top:8px;">Gerar pagamentos das sextas deste mês</button>
+    </div>
+
+    <div class="card">
+      <h2>Lançamentos</h2>
+      <div id="entriesList"><div class="empty">Carregando…</div></div>
+    </div>
+
+    <button class="toggle-add" id="toggleAddBtn">+ Adicionar lançamento</button>
+
+    <div class="card" id="addCard" style="display:none;">
+      <h2>Novo lançamento</h2>
+      <form class="add" id="addForm">
+        <div class="row3">
+          <div class="field">
+            <label>Data</label>
+            <input type="date" id="fDate" required>
+          </div>
+          <div class="field">
+            <label>Valor (R$)</label>
+            <input type="number" id="fValor" step="0.01" required>
+          </div>
+          <div class="field">
+            <label>Categoria</label>
+            <select id="fCategoria">
+              <option value="Semanal">Semanal</option>
+              <option value="Extra / compra">Extra / compra</option>
+              <option value="Adiantamento">Adiantamento</option>
+              <option value="Emprestimo">Empréstimo</option>
+            </select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Quem pagou</label>
+            <select id="fPayer">
+              <option value="André">André</option>
+              <option value="Andressa">Andressa</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Parcela (opcional, ex: 3/12)</label>
+            <input type="text" id="fParcela" placeholder="ex: 3/12">
+          </div>
+        </div>
+        <div class="field">
+          <label>Descrição / motivo</label>
+          <input type="text" id="fReason" placeholder="ex: Geladeira, valor semanal...">
+        </div>
+        <div style="display:flex; gap:8px; margin-top:4px;">
+          <button type="submit" style="flex:1;" id="submitAddBtn">Salvar lançamento</button>
+          <button type="button" class="secondary" id="cancelAddBtn">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="viewOverview" style="display:none;">
+    <div class="card">
+      <h2>Todos os meses</h2>
+      <div id="overviewList"><div class="empty">Carregando…</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="modalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:999; align-items:center; justify-content:center; padding:20px;">
+  <div id="modalBox" style="background:var(--card); border-radius:14px; padding:18px; max-width:340px; width:100%;">
+    <div id="modalText" style="font-size:.92rem; margin-bottom:14px;"></div>
+    <div id="modalInputWrap" style="display:none; margin-bottom:14px;">
+      <input type="text" id="modalInput" style="width:100%;">
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button id="modalCancelBtn" class="secondary" style="flex:1;">Cancelar</button>
+      <button id="modalOkBtn" style="flex:1;">OK</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  ============================================================================
+  CONFIGURAÇÃO DO AIRTABLE — veja README.md para instruções completas.
+  Troque AIRTABLE_TOKEN por um Personal Access Token com escopo restrito a
+  ESTA base (appnOnkT3glbNHmmZ), permissões data.records:read e
+  data.records:write. Nada mais.
+  ============================================================================
+-->
+<script>
+  var AIRTABLE_TOKEN = "COLE_SEU_TOKEN_AQUI";
+  var AIRTABLE_BASE_ID = "appnOnkT3glbNHmmZ";
+</script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# Relatorio de inconsistencias e exports contem valores/datas reais de
+# pagamento — mantidos locais, nao publicados no repositorio publico.
+INCONSISTENCIAS.md
+dados-originais-export.json
+*-export.json
