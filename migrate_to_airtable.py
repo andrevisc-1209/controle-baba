@@ -14,11 +14,20 @@ fazer com cada uma direto no Airtable.
 
 Uso:
     export AIRTABLE_TOKEN="patXXXXXXXXXXXXXX"      # PAT com escopo restrito à base
-    python3 migrate_to_airtable.py controle-baba-export.json
+    python3 migrate_to_airtable.py controle-baba-export.json --dry-run   # so mostra o plano
+    python3 migrate_to_airtable.py controle-baba-export.json            # cria de fato
+
+Flags:
+    --dry-run              Nao cria nada, so imprime o que seria criado.
+    --fix-month-from-date   Usa o mes derivado de `date` em vez do campo
+                            `month` gravado no export, para os 3 lancamentos
+                            com date/month divergentes (ver INCONSISTENCIAS.md
+                            item 1). Sem essa flag, mantem o `month` original.
 
 Requisitos: pip install requests
 """
 
+import argparse
 import json
 import os
 import re
@@ -116,18 +125,26 @@ def build_grupo_parcela(payer: str, categoria: str, motivo_limpo: str, total: in
 
 
 def main():
-    if len(sys.argv) != 2:
-        die(f"uso: {sys.argv[0]} <export.json>")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("export_path")
+    parser.add_argument("--dry-run", action="store_true", help="so mostra o plano, nao cria nada")
+    parser.add_argument(
+        "--fix-month-from-date",
+        action="store_true",
+        help="usa o mes derivado de `date` em vez do campo `month` do export",
+    )
+    args = parser.parse_args()
 
     token = os.environ.get("AIRTABLE_TOKEN")
     base_id = os.environ.get("AIRTABLE_BASE_ID", DEFAULT_BASE_ID)
     if not token:
         die("defina AIRTABLE_TOKEN no ambiente antes de rodar (o mesmo PAT do index.html serve)")
 
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
+    with open(args.export_path, "r", encoding="utf-8") as f:
         export = json.load(f)
 
     at = Airtable(token, base_id)
+    mode = "[DRY-RUN] " if args.dry_run else ""
 
     # ---- 1. Meses: upsert por MesID ----
     print("Lendo meses existentes no Airtable...")
@@ -143,10 +160,15 @@ def main():
         novos_meses.append({"MesID": mes_id, "ValorMensal": info.get("valorMes", 0)})
 
     if novos_meses:
-        print(f"Criando {len(novos_meses)} mes(es) novo(s)...")
-        created = at.create_batch(MESES_TABLE, novos_meses)
-        for rec in created:
-            mes_to_record_id[rec["fields"]["MesID"]] = rec["id"]
+        print(f"{mode}Criando {len(novos_meses)} mes(es) novo(s): {[m['MesID'] for m in novos_meses]}")
+        if not args.dry_run:
+            created = at.create_batch(MESES_TABLE, novos_meses)
+            for rec in created:
+                mes_to_record_id[rec["fields"]["MesID"]] = rec["id"]
+        else:
+            # em dry-run, assume ids fake so o resto do plano pode ser simulado
+            for m in novos_meses:
+                mes_to_record_id[m["MesID"]] = f"<novo:{m['MesID']}>"
     else:
         print("Nenhum mes novo a criar (todos ja existem).")
 
@@ -162,6 +184,7 @@ def main():
     novos = []
     pulados = 0
     sem_mes = []
+    mes_ajustado = []
     for p in export["payments"]:
         origem_id = p.get("_id")
         if origem_id and origem_id in ja_migrados:
@@ -169,6 +192,10 @@ def main():
             continue
 
         mes_id = p["month"]
+        if args.fix_month_from_date and p["date"][:7] != mes_id:
+            mes_ajustado.append((origem_id, mes_id, p["date"][:7]))
+            mes_id = p["date"][:7]
+
         if mes_id not in mes_to_record_id:
             sem_mes.append(p)
             continue
@@ -193,6 +220,11 @@ def main():
             fields["GrupoParcela"] = grupo
         novos.append(fields)
 
+    if mes_ajustado:
+        print(f"{mode}Mes corrigido pela data em {len(mes_ajustado)} lancamento(s):")
+        for origem_id, mes_original, mes_novo in mes_ajustado:
+            print(f"  - {origem_id}: {mes_original} -> {mes_novo}")
+
     if sem_mes:
         print(
             f"AVISO: {len(sem_mes)} lancamento(s) referenciam um mes que nao existe "
@@ -204,12 +236,18 @@ def main():
 
     print(f"Pulados (ja migrados anteriormente): {pulados}")
     if novos:
-        print(f"Criando {len(novos)} lancamento(s) novo(s)...")
-        at.create_batch(LANCAMENTOS_TABLE, novos)
+        print(f"{mode}Criando {len(novos)} lancamento(s) novo(s).")
+        if args.dry_run:
+            for f in novos[:15]:
+                print(f"  - {f['Data']} | {f['Categoria']:16s} | R$ {f['Valor']:>8.2f} | {f['QuemPagou']:8s} | {f['Motivo']}")
+            if len(novos) > 15:
+                print(f"  ... e mais {len(novos) - 15}.")
+        else:
+            at.create_batch(LANCAMENTOS_TABLE, novos)
     else:
         print("Nenhum lancamento novo a criar.")
 
-    print("Migracao concluida.")
+    print(f"\n{mode}Migracao {'simulada' if args.dry_run else 'concluida'}.")
 
 
 if __name__ == "__main__":
