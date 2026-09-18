@@ -666,6 +666,33 @@
     return { "Semanal": "Semanal", "Extra / compra": "Extra", "Adiantamento": "Adiant.", "Emprestimo": "Empréstimo" }[c] || c;
   }
 
+  // ---- visao por pessoa (QuemPagou) ----
+  var ORDEM_PAGADORES = ["André", "Andressa"];
+  function sumByPayer(list, onlyPaid) {
+    var totals = {};
+    list.forEach(function (e) {
+      if (onlyPaid && !e.paid) return;
+      var payer = e.payer || "—";
+      totals[payer] = (totals[payer] || 0) + e.value;
+    });
+    return totals;
+  }
+  function formatByPayer(totals) {
+    var keys = Object.keys(totals);
+    if (keys.length === 0) return "—";
+    keys.sort(function (a, b) {
+      var ia = ORDEM_PAGADORES.indexOf(a); if (ia === -1) ia = 99;
+      var ib = ORDEM_PAGADORES.indexOf(b); if (ib === -1) ib = 99;
+      return ia - ib;
+    });
+    return keys.map(function (k) { return k + ": " + brl(totals[k]); }).join(" · ");
+  }
+  function loadAllLancamentos() {
+    return listAll(T_LANC, { returnFieldsByFieldId: "true" }).then(function (records) {
+      return records.map(normalizeLancamento);
+    });
+  }
+
   function updateStatsDisplay(mesInfo) {
     document.getElementById("valorMesInput").value = mesInfo.valorMes;
     document.getElementById("statValorMes").textContent = brl(mesInfo.valorMes);
@@ -861,6 +888,7 @@
     var info = computeWeeklySuggestion(id, entries);
     currentPendentesInfo = info;
     document.getElementById("suggestedWeeklyText").textContent = info.text;
+    document.getElementById("byPayerMonthText").textContent = "Pago por pessoa: " + formatByPayer(sumByPayer(entries, true));
     var genBtn = document.getElementById("genWeeklyBtn");
     genBtn.disabled = info.pendentes.length === 0;
     genBtn.textContent = info.pendentes.length === 0
@@ -870,20 +898,60 @@
 
   function renderOverview() {
     var el = document.getElementById("overviewList");
+    var byPayerEl = document.getElementById("byPayerAllText");
     el.innerHTML = '<div class="empty">Carregando…</div>';
-    loadMeses().then(function () {
+    byPayerEl.textContent = "Carregando…";
+    Promise.all([loadMeses(), loadAllLancamentos()]).then(function (results) {
+      var allEntries = results[1];
       var ids = Object.keys(monthsCache).sort().reverse();
-      if (ids.length === 0) { el.innerHTML = '<div class="empty">Nenhum mês cadastrado.</div>'; return; }
+      if (ids.length === 0) {
+        el.innerHTML = '<div class="empty">Nenhum mês cadastrado.</div>';
+        byPayerEl.textContent = "—";
+        return;
+      }
       hideOffline();
-      var html = "";
+
+      byPayerEl.textContent = formatByPayer(sumByPayer(allEntries, true));
+
+      // agrupa os meses por ano (prefixo AAAA do MesID)
+      var porAno = {};
       ids.forEach(function (id) {
-        var r = monthsCache[id];
-        var saldo = r.saldo == null ? r.valorMes - r.totalPago : r.saldo;
-        html += '<div class="overview-row' + (saldo < 0 ? ' negative' : '') + '" data-month="' + id + '">' +
-          '<div><div class="m">' + monthLabel(id) + '</div>' +
-          '<div class="sub2">Pago ' + brl(r.totalPago) + ' de ' + brl(r.valorMes) + '</div></div>' +
-          '<div style="text-align:right; font-weight:700; color:' + (saldo < 0 ? 'var(--neg)' : (saldo > 0 ? 'var(--pos)' : 'inherit')) + ';">' + brl(saldo) + '</div>' +
-          '</div>';
+        var ano = id.slice(0, 4);
+        porAno[ano] = porAno[ano] || [];
+        porAno[ano].push(id);
+      });
+      var anos = Object.keys(porAno).sort().reverse();
+      var anoAtual = currentMonthKey().slice(0, 4);
+
+      var html = "";
+      anos.forEach(function (ano) {
+        var mesesDoAno = porAno[ano];
+        var totalPrevisto = 0, totalPago = 0;
+        mesesDoAno.forEach(function (id) {
+          var r = monthsCache[id];
+          totalPrevisto += r.valorMes;
+          totalPago += r.totalPago;
+        });
+        var saldoAno = totalPrevisto - totalPago;
+        html += '<details class="year-group"' + (ano === anoAtual ? " open" : "") + '>' +
+          '<summary class="year-summary">' +
+          '<span class="year-caret">▸</span>' +
+          '<span class="year-label">' + ano + '</span>' +
+          '<span class="year-stats">Pago ' + brl(totalPago) + ' de ' + brl(totalPrevisto) +
+          '<span class="year-saldo" style="color:' + (saldoAno < 0 ? 'var(--neg)' : (saldoAno > 0 ? 'var(--pos)' : 'inherit')) + ';">' + brl(saldoAno) + '</span>' +
+          '</span>' +
+          '</summary>' +
+          '<div class="year-months">';
+        mesesDoAno.forEach(function (id) {
+          var r = monthsCache[id];
+          var saldo = r.saldo == null ? r.valorMes - r.totalPago : r.saldo;
+          html += '<div class="overview-row' + (saldo < 0 ? ' negative' : '') + '" data-month="' + id + '">' +
+            '<div><div class="m">' + monthLabel(id) + '</div>' +
+            '<div class="sub2">Pago ' + brl(r.totalPago) + ' de ' + brl(r.valorMes) + '</div></div>' +
+            '<div style="text-align:right; font-weight:700; color:' + (saldo < 0 ? 'var(--neg)' : (saldo > 0 ? 'var(--pos)' : 'inherit')) + ';">' + brl(saldo) + '</div>' +
+            '</div>';
+        });
+        html += '</div></details>';
       });
       el.innerHTML = html;
       Array.prototype.forEach.call(el.querySelectorAll(".overview-row"), function (row) {
@@ -898,6 +966,7 @@
       console.error(e);
       showOffline("Não foi possível carregar a visão geral (" + e.message + ").");
       el.innerHTML = '<div class="empty">Sem conexão.</div>';
+      byPayerEl.textContent = "—";
     });
   }
 

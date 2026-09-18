@@ -120,6 +120,20 @@
   .overview-row .m{font-weight:600;}
   .overview-row .sub2{color:var(--muted); font-size:.78rem;}
   .overview-row.negative{background:color-mix(in srgb, var(--neg) 12%, transparent); border-radius:8px;}
+  .year-group{margin-bottom:6px;}
+  .year-group:last-child{margin-bottom:0;}
+  .year-summary{
+    display:flex; align-items:center; gap:8px; cursor:pointer; list-style:none;
+    padding:10px 4px; border-radius:8px;
+  }
+  .year-summary::-webkit-details-marker{display:none;}
+  .year-summary:hover{background:var(--chip);}
+  .year-caret{color:var(--muted); font-size:.75rem; transition:transform .15s; display:inline-block;}
+  .year-group[open] .year-caret{transform:rotate(90deg);}
+  .year-label{font-weight:700; font-size:1rem;}
+  .year-stats{margin-left:auto; text-align:right; font-size:.78rem; color:var(--muted);}
+  .year-stats .year-saldo{font-weight:700; margin-left:6px;}
+  .year-months{padding-left:4px;}
   .banner{
     font-size:.78rem; color:var(--muted); text-align:center; padding:10px 14px; background:var(--chip);
     display:none;
@@ -173,6 +187,9 @@
       </div>
       <div class="valorMesEdit" style="margin-top:6px;">
         <span id="suggestedWeeklyText">Semana sugerida: —</span>
+      </div>
+      <div class="valorMesEdit" style="margin-top:4px;">
+        <span id="byPayerMonthText">Pago por pessoa: —</span>
       </div>
       <button class="secondary" id="genWeeklyBtn" style="width:100%; margin-top:8px;">Gerar pagamentos das sextas deste mês</button>
     </div>
@@ -232,6 +249,10 @@
   </div>
 
   <div id="viewOverview" style="display:none;">
+    <div class="card">
+      <h2>Total pago por pessoa (todos os meses)</h2>
+      <div id="byPayerAllText" class="empty">Carregando…</div>
+    </div>
     <div class="card">
       <h2>Todos os meses</h2>
       <div id="overviewList"><div class="empty">Carregando…</div></div>

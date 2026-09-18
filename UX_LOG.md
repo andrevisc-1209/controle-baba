@@ -3,6 +3,42 @@
 Histórico de mudanças na interface (`index.html`/`app.js`). Separado do
 `MIGRATION_LOG.md`, que documenta schema e dados no Airtable.
 
+## Rodada 2 — visão por pessoa e resumo anual (2026-09-18)
+
+Itens 2 e 3 de uma lista de 3 melhorias pedidas (o item 1, rollover de
+saldo entre meses, fica pra depois — muda cálculo existente, tratado
+separadamente no `MIGRATION_LOG.md`/nesta sessão). Nenhuma mudança de
+schema no Airtable; só `index.html`/`app.js`.
+
+### Visão por pessoa (André vs Andressa)
+
+- Aba "Mês": nova linha "Pago por pessoa: André: R$X · Andressa: R$Y"
+  logo abaixo da "Semana sugerida", somando só os lançamentos **pagos**
+  do mês selecionado (`sumByPayer` sobre `currentEntries`, sem chamada de
+  rede extra — os dados já estavam carregados).
+- Aba "Visão geral": novo card "Total pago por pessoa (todos os meses)"
+  no topo, somando todos os lançamentos pagos de todos os meses
+  (`loadAllLancamentos`, uma busca nova de todos os registros da tabela
+  Lancamentos). Só aparece quando a aba é aberta, não no carregamento
+  inicial.
+- Testado: mês com um único pagador (Set/2026, só André) e mês com dois
+  pagadores (Dez/2025, André R$921,25 e Andressa R$135,00) — os dois
+  casos calcularam certo. Conferi a soma geral (André R$41.362,64,
+  Andressa R$778,88) contra uma consulta direta à API, bateu exato.
+
+### Resumo anual na Visão geral
+
+- A lista de meses agora é agrupada por ano usando `<details>`/`<summary>`
+  nativos (colapsa/expande sem JS de estado — só CSS pra estilizar o
+  marcador). Cada ano mostra "Pago R$X de R$Y" + saldo do ano (soma do
+  `ValorMensal` e do `TotalPago` de todos os meses daquele ano existentes
+  na base).
+- O ano corrente (2026) abre expandido por padrão; os demais (2025, 2027)
+  começam colapsados.
+- Testado: expandi/colapsei 2025 manualmente (funcionou, caret gira),
+  cliquei num mês dentro de um grupo expandido (Dez/2025) e a navegação
+  pra aba "Mês" continuou funcionando normalmente.
+
 ## Rodada 1 — revisão de UX aplicada (2026-09-18)
 
 Itens revisados e aprovados numa sessão anterior, implementados e testados
