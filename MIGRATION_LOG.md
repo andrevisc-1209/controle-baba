@@ -282,3 +282,53 @@ Soma de `Valor` de todos os lançamentos: R$42.581,52 → **R$42.461,52**
 série voltou a ter 12 parcelas em 12 meses consecutivos). Total de
 registros: 133 → **132**. Confirmado visualmente no app (set/2026
 inalterado, abr/2027 zerado e sem lançamentos).
+
+## 8. Saldo acumulado entre meses (2026-09-18)
+
+Pedido: refletir o saldo devedor/credor de um mês no mês seguinte (ex:
+dezembro fechou pagando R$1.001,50 a mais, isso deveria aparecer no saldo
+de janeiro, não desaparecer).
+
+### Decisão técnica: sem campo novo no Airtable
+
+O pedido original imaginava um campo `SaldoAnterior` (link/lookup pro mês
+anterior) mais um `SaldoAcumulado` (`SaldoAnterior + Saldo do mês`). Isso
+**não é possível nativamente no Airtable**: um saldo acumulado é uma soma
+corrida sobre uma cadeia de meses que cresce com o tempo, e o Airtable não
+tem fórmula recursiva nem "rollup do rollup" em cadeia — cada fórmula só
+enxerga o registro ligado diretamente, não a cadeia inteira. Um lookup
+pegaria o `Saldo` do mês anterior (só esse mês, não o acumulado dele), e
+não haveria como compor isso automaticamente sem recriar campos a cada
+mês novo criado.
+
+Resolvido calculando o acumulado **no app** (`app.js`), a partir dos 27
+meses já carregados em `monthsCache` — mesmo resultado visível pro
+usuário, sem fragilidade de manter uma cadeia de links. **Nenhum campo
+novo na base.**
+
+### Decisão de produto: informativo, não afeta a sugestão semanal
+
+Perguntado e confirmado: o saldo acumulado é só informativo. A fórmula de
+"Semana sugerida" continua exatamente como era (`ValorMensal - dívidas do
+mês`, dividido pelas sextas pendentes) — não desconta automaticamente
+excedente/déficit de meses anteriores. Decisão do usuário, não decidida
+sozinho.
+
+### Dry-run e aplicação
+
+Rodei o cálculo (soma corrida de `Saldo` em ordem cronológica) contra os
+27 meses reais e mostrei a tabela mês a mês antes de aplicar. Confirmado.
+
+Durante a checagem, encontrei **5 registros de mês órfãos** (2027-08 a
+2027-12) sem nenhum lançamento ligado — sobra de um teste de uma sessão
+anterior (propagação de parcela de teste, que criou os meses via
+`ensureMonthRecord` mas cujos lançamentos de teste eu já tinha apagado,
+sem apagar os meses vazios que sobraram). Confirmei que os 5 tinham 0
+lançamentos ligados e apaguei — a base voltou aos 27 meses corretos
+(2025-05 a 2027-07). Isso também corrigiu o resumo anual de 2027 (item
+3 do `UX_LOG.md`), que estava somando 12 meses em vez de 7 até eu notar.
+
+Aplicado em `app.js`/`index.html`: nova linha "Saldo acumulado até este
+mês" na aba Mês, e uma linha "Acumulado" por mês na Visão geral. Testado
+no navegador: os valores batem exatos com a tabela do dry-run (ex:
+Set/2026 = -R$721,52, Dez/2026 = R$6.418,48).

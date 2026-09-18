@@ -3,6 +3,28 @@
 Histórico de mudanças na interface (`index.html`/`app.js`). Separado do
 `MIGRATION_LOG.md`, que documenta schema e dados no Airtable.
 
+## Rodada 3 — saldo acumulado exibido (2026-09-18)
+
+Item 1 de uma lista de 3 melhorias (itens 2 e 3 na Rodada 2 abaixo). O
+cálculo em si, a decisão de ser só informativo, e a limpeza de dados que
+apareceu no caminho estão detalhados no `MIGRATION_LOG.md` seção 8 — aqui
+só o que mudou na tela.
+
+- Nova função `computeSaldoAcumulado()`: soma corrida do saldo de cada
+  mês (`ValorMensal - TotalPago`) em ordem cronológica, a partir dos
+  meses já carregados em `monthsCache`. Calculada no app, sem nenhuma
+  chamada de rede extra.
+- Aba "Mês": nova linha "Saldo acumulado até este mês: R$X" (colorida
+  verde/vermelho), logo abaixo de "Pago por pessoa".
+- Aba "Visão geral": cada linha de mês ganhou "· Acumulado R$X" ao lado
+  do "Pago R$X de R$Y" já existente.
+- **Não mexe na "Semana sugerida"** — confirmado com o usuário antes de
+  implementar que o acumulado é só informativo, não desconta
+  automaticamente do valor sugerido da próxima semana.
+- Testado no navegador: os valores batem exatos com a tabela de dry-run
+  aprovada (Set/2026 = -R$721,52, Dez/2026 = R$6.418,48, etc.), tanto na
+  aba Mês quanto na Visão geral.
+
 ## Rodada 2 — visão por pessoa e resumo anual (2026-09-18)
 
 Itens 2 e 3 de uma lista de 3 melhorias pedidas (o item 1, rollover de

@@ -693,6 +693,26 @@
     });
   }
 
+  // ---- saldo acumulado entre meses (informativo, nao afeta a sugestao semanal) ----
+  // Soma corrida do saldo (ValorMensal - TotalPago) de cada mes em ordem cronologica.
+  // Calculado no app a partir de monthsCache (ja carregado por completo) porque o
+  // Airtable nao tem como expressar uma soma recursiva sobre uma cadeia de meses que
+  // cresce com o tempo — cada formula/rollup so enxerga o registro ligado direto, nao
+  // a cadeia inteira, e nao ha "rollup do rollup" em cadeia sem recriar campos a cada
+  // mes novo.
+  function computeSaldoAcumulado() {
+    var ids = Object.keys(monthsCache).sort(); // cronologico (MesID = AAAA-MM ordena certo)
+    var acumulado = 0;
+    var porMes = {};
+    ids.forEach(function (id) {
+      var r = monthsCache[id];
+      var saldoMes = r.saldo == null ? r.valorMes - r.totalPago : r.saldo;
+      acumulado += saldoMes;
+      porMes[id] = acumulado;
+    });
+    return porMes;
+  }
+
   function updateStatsDisplay(mesInfo) {
     document.getElementById("valorMesInput").value = mesInfo.valorMes;
     document.getElementById("statValorMes").textContent = brl(mesInfo.valorMes);
@@ -889,6 +909,13 @@
     currentPendentesInfo = info;
     document.getElementById("suggestedWeeklyText").textContent = info.text;
     document.getElementById("byPayerMonthText").textContent = "Pago por pessoa: " + formatByPayer(sumByPayer(entries, true));
+
+    var acumuladoPorMes = computeSaldoAcumulado();
+    var saldoAcumuladoAtual = acumuladoPorMes[id];
+    var elAcumulado = document.getElementById("saldoAcumuladoText");
+    elAcumulado.textContent = "Saldo acumulado até este mês: " + brl(saldoAcumuladoAtual);
+    elAcumulado.style.color = saldoAcumuladoAtual < 0 ? "var(--neg)" : (saldoAcumuladoAtual > 0 ? "var(--pos)" : "");
+
     var genBtn = document.getElementById("genWeeklyBtn");
     genBtn.disabled = info.pendentes.length === 0;
     genBtn.textContent = info.pendentes.length === 0
@@ -922,6 +949,7 @@
       });
       var anos = Object.keys(porAno).sort().reverse();
       var anoAtual = currentMonthKey().slice(0, 4);
+      var acumuladoPorMes = computeSaldoAcumulado();
 
       var html = "";
       anos.forEach(function (ano) {
@@ -945,9 +973,11 @@
         mesesDoAno.forEach(function (id) {
           var r = monthsCache[id];
           var saldo = r.saldo == null ? r.valorMes - r.totalPago : r.saldo;
+          var acumulado = acumuladoPorMes[id];
           html += '<div class="overview-row' + (saldo < 0 ? ' negative' : '') + '" data-month="' + id + '">' +
             '<div><div class="m">' + monthLabel(id) + '</div>' +
-            '<div class="sub2">Pago ' + brl(r.totalPago) + ' de ' + brl(r.valorMes) + '</div></div>' +
+            '<div class="sub2">Pago ' + brl(r.totalPago) + ' de ' + brl(r.valorMes) +
+            ' · Acumulado <span style="color:' + (acumulado < 0 ? 'var(--neg)' : (acumulado > 0 ? 'var(--pos)' : 'inherit')) + ';">' + brl(acumulado) + '</span></div></div>' +
             '<div style="text-align:right; font-weight:700; color:' + (saldo < 0 ? 'var(--neg)' : (saldo > 0 ? 'var(--pos)' : 'inherit')) + ';">' + brl(saldo) + '</div>' +
             '</div>';
         });
