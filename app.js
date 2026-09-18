@@ -358,7 +358,7 @@
             fields[F.lanc.grupoParcela] = grupoParcela;
             fields[F.lanc.origemImportId] = p.origemId;
             fields[F.lanc.mesLink] = [mesInfo.recordId];
-            fields[F.lanc.pago] = false; // parcela futura: previsto, ainda nao pago
+            fields[F.lanc.pago] = true; // parcela: divida ja comprometida na compra, nao discricionaria como o semanal
             return createRecordsChunked(T_LANC, [{ fields: fields }]);
           });
         });
@@ -556,6 +556,7 @@
         fields[F.lanc.parcelaTotal] = total;
         fields[F.lanc.grupoParcela] = grupo;
         fields[F.lanc.origemImportId] = "installment-" + grupo + "-" + atual;
+        fields[F.lanc.pago] = true; // parcela: divida ja comprometida na compra
       }
 
       var createFirst;
