@@ -172,3 +172,67 @@ R$2.500 (a parcela do mês ainda não paga) — confirmado visualmente no app.
 - `TotalPago`/`Saldo` no card de estatísticas continuam vindo direto do
   Airtable (nenhuma mudança de código necessária ali — o filtro por `Pago`
   já acontece no rollup, na origem).
+
+## 6. Parcela nasce paga; semanal continua discricionário (2026-09-18)
+
+Decisão: dívida de parcela é comprometida no momento da compra (ao contrário
+do pagamento semanal, que é decidido semana a semana). A partir de agora,
+qualquer lançamento com `GrupoParcela` preenchido nasce com **`Pago=true`**
+— tanto os gerados pela propagação automática quanto os criados manualmente
+informando `ParcelaAtual`/`ParcelaTotal` no formulário. Lançamentos
+semanais continuam nascendo `Pago=false`, sem alteração.
+
+### Ambiguidade encontrada e resolvida
+
+Pedido original descrevia "renumerar a série do Óculos a partir do
+duplicado, sem apagar nada" mas dava como meta explícita "1..12 (12
+registros)" — matematicamente incompatível (a série tinha 13 registros:
+`1,2,3,4,5,5,6,7,8,9,10,11,12`; renumerar sem apagar dá 13 números, não
+12). Perguntei; você optou por **apagar** o registro duplicado
+(`hist_6`, "5/12" de set/2026) em vez de estender a série pra 13x. Como
+`auto_oculos_06` a `12` já estavam com os números certos (6 a 12), a
+exclusão sozinha já deixou a série correta (1..12, 12 registros) sem
+precisar renumerar mais nada.
+
+### Dry-run e aplicação
+
+Levantados os 4 grupos de parcela existentes: Óculos (13→12), Geladeira
+(12), Remédio (3), Ar condicionado (5) — 33 registros no total, dos quais
+27 já estavam `Pago=true` (pela regra de corte por data da seção 5).
+Mostrei a tabela antes/depois e esperei confirmação antes de aplicar.
+
+Aplicado:
+- **6 registros** Óculos (parcelas 7/12 a 12/12, nov/2026–abr/2027)
+  mudaram de `Pago=false` para `true`.
+- **1 registro apagado**: `hist_6` (Óculos "5/12" duplicado, set/2026,
+  R$120, estava `Pago=true`).
+- Nenhum outro campo (`Valor`, `Data`, `GrupoParcela`, `ParcelaAtual` dos
+  demais) foi alterado.
+
+Nota: durante a checagem, `auto_oculos_06` (out/2026) já estava marcado
+como `Pago=true` — não foi esta sessão que fez isso; presumivelmente uso
+real do app entre as duas conversas. Mantido como está.
+
+### Totais confirmados depois de aplicar
+
+| Mês | Pago antes | Pago depois | Saldo antes | Saldo depois |
+|---|---|---|---|---|
+| Set/2026 | R$2.180 | R$2.060 | R$320 | R$440 |
+| Nov/2026 | R$0 | R$120 | R$2.500 | R$2.380 |
+| Dez/2026 | R$0 | R$120 | R$2.500 | R$2.380 |
+| Jan/2027 | R$0 | R$120 | R$2.500 | R$2.380 |
+| Fev/2027 | R$0 | R$120 | R$2.500 | R$2.380 |
+| Mar/2027 | R$0 | R$120 | R$2.500 | R$2.380 |
+| Abr/2027 | R$0 | R$120 | R$2.500 | R$2.380 |
+
+Todos batendo exatamente com o previsto no dry-run. Soma de `Valor` de
+todos os lançamentos da base: R$42.461,52 — exatamente R$42.581,52 (soma
+antes desta sessão) menos R$120 do `hist_6` apagado. Total de registros:
+**132** (133 − 1).
+
+### Testado no navegador
+
+Criei um lançamento de parcela de teste (1/2) pelo formulário real: nasceu
+com o checkbox já marcado. A parcela propagada (2/2) também nasceu marcada.
+Ambos os testes foram excluídos depois — base voltou a 132 registros, sem
+sobra de teste.
