@@ -82,19 +82,36 @@ foi combinado explicitamente, por isso ficaram de fora do repositório público
 por padrão. Se quiser publicá-los mesmo assim, é só remover as duas linhas
 correspondentes do `.gitignore`.
 
-## 4. Migração dos dados — AINDA NÃO EXECUTADA
+## 4. Migração dos dados — CONCLUÍDA (2026-09-18)
 
-Conforme pedido, a migração real não foi rodada. Relatório de inconsistências
-gerado em `INCONSISTENCIAS.md` (local, não versionado) com 5 categorias
-verificadas no export de 27 meses / 133 lançamentos:
+Relatório de inconsistências gerado em `INCONSISTENCIAS.md` (local, não
+versionado) com 5 categorias, das quais 2 exigiam decisão sua:
 
-1. 3 lançamentos com `date`/`month` divergentes (mesmo bug corrigido no item 2)
-2. 6 lançamentos "Semanal" que não caem numa sexta real (antecipações/atrasos)
-3. 1 duplicidade de numeração de parcela (Óculos, parcela 5/12 aparece duas
-   vezes — `hist_13` e `hist_6`) — **essa é a que você já sabia**
-4. 2 meses em que o total pago superou o valor mensal combinado
-5. 1 caso de drift de arredondamento de R$0,02
+1. **3 lançamentos com `date`/`month` divergentes** (`hist_70`/`71`/`72`) —
+   você decidiu corrigir para o mês da data. Migrados para **2025-11**
+   (antes constavam em 2025-12). Confirmado via rollup: 2025-11 passou a
+   somar R$3.943,75 (saldo -R$1.443,75) e 2025-12 caiu para R$1.056,25
+   (saldo +R$1.443,75) — a diferença exata dos 3 lançamentos movidos.
+2. **Duplicidade de parcela dos óculos** (`hist_13` ago/26 e `hist_6` set/26,
+   ambos "5/12") — você identificou como erro de numeração, mas pediu para
+   corrigir manualmente no Airtable depois. **Migrados como estão**, sem
+   alteração: a série "Óculos" hoje tem 13 registros pra um total de 12
+   parcelas (`GrupoParcela = andre-oculos-12`), com dois "5/12". Pendente de
+   você decidir a renumeração direto na base (afeta se o total sobe para 13,
+   ou se as parcelas 6-12 sobem um número cada).
+3. 6 lançamentos "Semanal" que não caem numa sexta real (antecipações/
+   atrasos) — migrados como estão, sem impacto (o app novo já lida com isso
+   pelo casamento por semana).
+4. 2 meses em que o total pago superou o valor mensal combinado — migrados
+   como estão, informativo.
+5. 1 caso de drift de arredondamento de R$0,02 — migrado como está,
+   informativo.
 
-Depois de revisar e decidir o que fazer com cada um (corrigir no JSON antes
-de importar, ou importar como está e ajustar depois direto no Airtable),
-rode `migrate_to_airtable.py` — instruções no README.md.
+Executada via chamadas diretas à API do Airtable (mesmo mecanismo usado para
+criar o schema), não pelo `migrate_to_airtable.py` — não havia ainda um PAT
+do Airtable disponível para o script rodar com o token do usuário. Resultado
+final na base: **27 registros em Meses, 133 em Lancamentos** (contagem
+confirmada via `list_records_for_table`). `migrate_to_airtable.py` continua
+disponível no repo com `--dry-run`/`--fix-month-from-date` para reexecuções
+futuras (é idempotente por `OrigemImportID`, então rodá-lo agora não duplica
+nada do que já foi criado).
