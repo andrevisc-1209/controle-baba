@@ -12,7 +12,7 @@
     mes: {
       mesId: "fldPMpj9ze60GoDek",
       valorMensal: "fldUArIi7cO0ZHTHv",
-      totalPago: "fld06OtxbQxOnheVt", // rollup, somente leitura
+      totalPago: "fldQZDcaGiqpJGlpv", // rollup (so soma lancamentos com Pago=true), somente leitura
       saldo: "fldOEZg8YRjVF3JF3", // formula, somente leitura
     },
     lanc: {
@@ -26,6 +26,7 @@
       grupoParcela: "fldbb4EaqjLiP1arZ",
       origemImportId: "fldO066zZ0vXOreiL",
       mesLink: "fldetz5naUR8tjjAk",
+      pago: "fldvhbCWJ3jzRADaY",
     },
   };
 
@@ -301,6 +302,7 @@
       parcelaTotal: f[F.lanc.parcelaTotal] || null,
       grupoParcela: f[F.lanc.grupoParcela] || null,
       origemImportId: f[F.lanc.origemImportId] || null,
+      paid: f[F.lanc.pago] === true,
     };
   }
 
@@ -322,6 +324,12 @@
 
   function deleteLancamento(recordId) {
     return atRequest(T_LANC, "DELETE", { "records[]": recordId });
+  }
+
+  function setPago(recordId, paid) {
+    var fields = {};
+    fields[F.lanc.pago] = paid;
+    return updateRecord(T_LANC, recordId, fields);
   }
 
   // ---- propagacao de parcelas (campos estruturados + idempotencia) ----
@@ -350,6 +358,7 @@
             fields[F.lanc.grupoParcela] = grupoParcela;
             fields[F.lanc.origemImportId] = p.origemId;
             fields[F.lanc.mesLink] = [mesInfo.recordId];
+            fields[F.lanc.pago] = false; // parcela futura: previsto, ainda nao pago
             return createRecordsChunked(T_LANC, [{ fields: fields }]);
           });
         });
@@ -488,6 +497,7 @@
           fields[F.lanc.motivo] = "Valor semanal";
           fields[F.lanc.origemImportId] = origemId;
           fields[F.lanc.mesLink] = [mesInfo.recordId];
+          fields[F.lanc.pago] = false; // previsto (sexta do mes), ainda nao pago
           records.push({ fields: fields });
         });
         if (records.length === 0) return;
@@ -634,9 +644,11 @@
       entries.slice().reverse().forEach(function (v) {
         var dateFmt = v.date ? v.date.split("-").reverse().slice(0, 2).join("/") : "";
         var parcelaTxt = v.parcelaAtual && v.parcelaTotal ? " (Parc " + v.parcelaAtual + "/" + v.parcelaTotal + ")" : "";
-        html += '<div class="entry">' +
+        html += '<div class="entry' + (v.paid ? "" : " pending") + '">' +
+          '<input type="checkbox" class="pago-toggle" data-id="' + v.id + '" title="Marcar como pago"' + (v.paid ? " checked" : "") + '>' +
           '<div class="info">' +
-          '<div class="date">' + dateFmt + '<span class="tag">' + catShort(v.category) + '</span></div>' +
+          '<div class="date">' + dateFmt + '<span class="tag">' + catShort(v.category) + '</span>' +
+          (v.paid ? "" : '<span class="tag pendente">Pendente</span>') + '</div>' +
           '<div class="reason">' + escapeHtml(v.reason || "") + escapeHtml(parcelaTxt) + '</div>' +
           '</div>' +
           '<div class="right">' +
@@ -647,6 +659,21 @@
           '</div>';
       });
       list.innerHTML = html;
+      Array.prototype.forEach.call(list.querySelectorAll("input.pago-toggle"), function (chk) {
+        chk.onchange = function () {
+          var recordId = chk.getAttribute("data-id");
+          var novoValor = chk.checked;
+          chk.disabled = true;
+          setPago(recordId, novoValor).then(function () {
+            hideOffline();
+            return loadMeses().then(function () { return refreshMonthView(id); });
+          }).catch(function (e) {
+            console.error(e);
+            chk.disabled = false; chk.checked = !novoValor;
+            showOffline("Não foi possível atualizar (" + e.message + ").");
+          });
+        };
+      });
       Array.prototype.forEach.call(list.querySelectorAll("button.danger"), function (btn) {
         btn.onclick = function () {
           var recordId = btn.getAttribute("data-id");

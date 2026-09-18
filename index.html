@@ -67,8 +67,14 @@
   .entry{
     display:flex; justify-content:space-between; align-items:flex-start;
     padding:10px 0; border-bottom:1px solid var(--line); gap:10px;
+    transition:opacity .15s;
   }
   .entry:last-child{border-bottom:none;}
+  .entry.pending{opacity:.55;}
+  .entry .pago-toggle{
+    margin-top:3px; width:18px; height:18px; flex-shrink:0; cursor:pointer;
+    accent-color:var(--pos);
+  }
   .entry .info{flex:1; min-width:0;}
   .entry .date{font-size:.75rem; color:var(--muted);}
   .entry .reason{font-size:.9rem; margin-top:1px;}
@@ -77,6 +83,7 @@
     background:var(--chip); color:var(--accent-dark); margin-left:6px; vertical-align:middle;
     font-weight:600; text-transform:uppercase;
   }
+  .entry .tag.pendente{color:var(--neg);}
   .entry .right{text-align:right; white-space:nowrap;}
   .entry .value{font-weight:700;}
   .entry .payer{font-size:.72rem; color:var(--muted);}
