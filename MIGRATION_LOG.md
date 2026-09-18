@@ -236,3 +236,49 @@ Criei um lançamento de parcela de teste (1/2) pelo formulário real: nasceu
 com o checkbox já marcado. A parcela propagada (2/2) também nasceu marcada.
 Ambos os testes foram excluídos depois — base voltou a 132 registros, sem
 sobra de teste.
+
+## 7. Correção da gafe na renumeração da série Óculos (2026-09-18)
+
+Ao apagar a duplicata da seção 6, o registro de setembro/2026 foi apagado
+por completo em vez de renumerado — a série ficou com um buraco (ago/2026
+= parcela 5, out/2026 = parcela 6, sem nada em setembro) e a última parcela
+sobrando em abr/2027 em vez de fechar em mar/2027.
+
+### Achado extra antes de corrigir
+
+Entre esta sessão e a anterior, foi criado manualmente pelo app real um
+lançamento solto pra tentar preencher o buraco: `rec9PDId7aOFyKHtl`
+("Extra/compra", "oculos", R$120, data 18/09/2026, `Pago=true`), **sem**
+`ParcelaAtual`/`ParcelaTotal`/`GrupoParcela` — ou seja, sem vínculo
+estruturado com a série. Se a correção fosse aplicada por cima dele,
+setembro contaria R$240 em óculos (dobrado). Perguntei; decisão foi apagar
+esse lançamento solto e substituir pelo registro estruturado correto.
+
+### Correção aplicada
+
+- **Apagado**: `rec9PDId7aOFyKHtl` (o lançamento solto acima).
+- **Criado**: registro de setembro/2026 — Extra/compra, Óculos, R$120,
+  `ParcelaAtual=6`, `ParcelaTotal=12`, mesmo `GrupoParcela`, data
+  01/09/2026, `Pago=true`.
+- **Renumerados** (+1 em `ParcelaAtual`, nenhum outro campo tocado):
+  out/2026 (6→7), nov/2026 (7→8), dez/2026 (8→9), jan/2027 (9→10),
+  fev/2027 (10→11), mar/2027 (11→12).
+- **Apagado**: o registro de abr/2027 (`ParcelaAtual=12` antigo, R$120) —
+  a série passa a fechar em mar/2027, um lançamento por mês, sem buraco.
+
+Sequência final confirmada via API: 12 registros, `ParcelaAtual` 1..12,
+um por mês, abr/2026 a mar/2027 — sem duplicata e sem buraco.
+
+### Totais confirmados depois de aplicar
+
+| Mês | Pago antes | Pago depois | Saldo antes | Saldo depois |
+|---|---|---|---|---|
+| Set/2026 | R$2.180 | R$2.180 (sem mudança — troca o lançamento solto pelo estruturado) | R$320 | R$320 |
+| Out/2026–Mar/2027 | sem mudança (só renumera) | sem mudança | sem mudança | sem mudança |
+| Abr/2027 | R$120 | R$0 | R$2.380 | R$2.500 |
+
+Soma de `Valor` de todos os lançamentos: R$42.581,52 → **R$42.461,52**
+(−R$120, o valor da parcela que deixou de existir em abr/2027 já que a
+série voltou a ter 12 parcelas em 12 meses consecutivos). Total de
+registros: 133 → **132**. Confirmado visualmente no app (set/2026
+inalterado, abr/2027 zerado e sem lançamentos).
