@@ -332,8 +332,12 @@
     return updateRecord(T_LANC, recordId, fields);
   }
 
+  function editarLancamento(recordId, fields) {
+    return updateRecord(T_LANC, recordId, fields);
+  }
+
   // ---- propagacao de parcelas (campos estruturados + idempotencia) ----
-  function propagateInstallments(motivo, value, payer, categoria, startMonthId, currentNum, total, grupoParcela) {
+  function propagateInstallments(motivo, value, payer, categoria, startMonthId, currentNum, total, grupoParcela, onProgress) {
     var valorMesFallback = (monthsCache[startMonthId] || {}).valorMes || 2500;
     var stepsRemaining = total - currentNum;
     var plan = [];
@@ -344,8 +348,10 @@
     var origemIds = plan.map(function (p) { return p.origemId; });
     return findExistingOrigemIds(origemIds).then(function (existing) {
       var pending = plan.filter(function (p) { return !existing[p.origemId]; });
-      return pending.reduce(function (chain, p) {
+      var totalPendentes = pending.length;
+      return pending.reduce(function (chain, p, idx) {
         return chain.then(function () {
+          if (onProgress) onProgress(idx + 1, totalPendentes);
           return ensureMonthRecord(p.monthId, valorMesFallback).then(function (mesInfo) {
             var fields = {};
             fields[F.lanc.data] = p.monthId + "-01";
@@ -439,6 +445,18 @@
 
   document.getElementById("fDate").value = todayISO();
 
+  var LS_KEY_CATEGORIA = "controle-baba:lastCategoria";
+  function aplicarUltimaCategoria() {
+    try {
+      var lastCategoria = localStorage.getItem(LS_KEY_CATEGORIA);
+      if (lastCategoria) document.getElementById("fCategoria").value = lastCategoria;
+    } catch (e) { /* localStorage indisponivel (modo privado etc.) — ignora */ }
+  }
+  function salvarUltimaCategoria(categoria) {
+    try { localStorage.setItem(LS_KEY_CATEGORIA, categoria); } catch (e) { /* ignora */ }
+  }
+  aplicarUltimaCategoria();
+
   monthSelect.onchange = function () { selectMonth(monthSelect.value); };
 
   document.getElementById("newMonthBtn").onclick = function () {
@@ -455,6 +473,13 @@
     });
   };
 
+  var valorMesEditRow = document.getElementById("valorMesEditRow");
+  document.getElementById("editValorMesBtn").onclick = function () {
+    var abrir = valorMesEditRow.style.display === "none";
+    valorMesEditRow.style.display = abrir ? "" : "none";
+    if (abrir) document.getElementById("valorMesInput").focus();
+  };
+
   document.getElementById("saveValorMesBtn").onclick = function () {
     if (!currentMonthId) return;
     var v = parseFloat(document.getElementById("valorMesInput").value) || 0;
@@ -464,6 +489,7 @@
     fields[F.mes.valorMensal] = v;
     updateRecord(T_MESES, mesInfo.recordId, fields).then(function () {
       hideOffline();
+      valorMesEditRow.style.display = "none";
       return loadMeses().then(function () { return refreshMonthView(currentMonthId); });
     }).catch(function (e) {
       console.error(e); showOffline("Não foi possível salvar (" + e.message + ").");
@@ -571,15 +597,19 @@
 
       return createFirst.then(function () {
         if (atual != null && total > atual) {
-          return propagateInstallments(reason || categoria, valor, payer, categoria, mesIdFromDate, atual, total, grupo);
+          return propagateInstallments(reason || categoria, valor, payer, categoria, mesIdFromDate, atual, total, grupo, function (i, totalPend) {
+            submitBtn.textContent = "Criando parcela " + i + "/" + totalPend + "…";
+          });
         }
       }).then(function () {
         return { mesIdFromDate: mesIdFromDate };
       });
     }).then(function (result) {
       hideOffline();
+      salvarUltimaCategoria(categoria);
       document.getElementById("addForm").reset();
       document.getElementById("fDate").value = todayISO();
+      aplicarUltimaCategoria();
       addOpen = false; addCard.style.display = "none";
       toggleAddBtn.textContent = "+ Adicionar lançamento";
       submitBtn.disabled = false; submitBtn.textContent = "Salvar lançamento";
@@ -636,6 +666,110 @@
     return { "Semanal": "Semanal", "Extra / compra": "Extra", "Adiantamento": "Adiant.", "Emprestimo": "Empréstimo" }[c] || c;
   }
 
+  function updateStatsDisplay(mesInfo) {
+    document.getElementById("valorMesInput").value = mesInfo.valorMes;
+    document.getElementById("statValorMes").textContent = brl(mesInfo.valorMes);
+    document.getElementById("statPago").textContent = brl(mesInfo.totalPago);
+    var saldo = mesInfo.saldo == null ? mesInfo.valorMes - mesInfo.totalPago : mesInfo.saldo;
+    var saldoEl = document.getElementById("statSaldo");
+    saldoEl.textContent = brl(saldo);
+    saldoEl.className = "val " + (saldo < 0 ? "neg" : (saldo > 0 ? "pos" : ""));
+  }
+
+  function setRowPaidVisual(row, paid) {
+    row.classList.toggle("pending", !paid);
+    var tag = row.querySelector(".tag.pendente");
+    if (paid && tag) tag.remove();
+    if (!paid && !tag) {
+      var dateDiv = row.querySelector(".date");
+      var span = document.createElement("span");
+      span.className = "tag pendente";
+      span.textContent = "Pendente";
+      dateDiv.appendChild(span);
+    }
+  }
+
+  // ---- edicao inline de valor/data (preserva Pago e os demais campos) ----
+  function salvarEdicaoValor(recordId, novoValor) {
+    var fields = {};
+    fields[F.lanc.valor] = novoValor;
+    return editarLancamento(recordId, fields).then(function () {
+      hideOffline();
+      return loadMeses().then(function () { return refreshMonthView(currentMonthId); });
+    }).catch(function (e) {
+      console.error(e);
+      showOffline("Não foi possível salvar o valor (" + e.message + ").");
+      return refreshMonthView(currentMonthId);
+    });
+  }
+
+  function salvarEdicaoData(recordId, novaData) {
+    var novoMesId = novaData.slice(0, 7);
+    var mudouMes = novoMesId !== currentMonthId;
+    var fallbackValorMes = (monthsCache[currentMonthId] || {}).valorMes || 2500;
+    return (mudouMes ? ensureMonthRecord(novoMesId, fallbackValorMes) : Promise.resolve(null)).then(function (mesInfo) {
+      var fields = {};
+      fields[F.lanc.data] = novaData;
+      if (mudouMes) fields[F.lanc.mesLink] = [mesInfo.recordId];
+      return editarLancamento(recordId, fields);
+    }).then(function () {
+      hideOffline();
+      return loadMeses();
+    }).then(function () {
+      return refreshMonthView(currentMonthId).then(function () {
+        if (mudouMes) return showAlert("Lançamento movido pra " + monthLabel(novoMesId) + " (mês da nova data).");
+      });
+    }).catch(function (e) {
+      console.error(e);
+      showOffline("Não foi possível salvar a data (" + e.message + ").");
+      return refreshMonthView(currentMonthId);
+    });
+  }
+
+  function ativarEdicaoInline(span) {
+    if (span.querySelector("input")) return; // ja em edicao
+    var recordId = span.getAttribute("data-id");
+    var field = span.getAttribute("data-field");
+    var entry = currentEntries.filter(function (e) { return e.id === recordId; })[0];
+    if (!entry) return;
+
+    var original = span.textContent;
+    var input = document.createElement("input");
+    input.className = "inline-edit-input";
+    if (field === "valor") {
+      input.type = "number"; input.step = "0.01"; input.value = entry.value;
+    } else {
+      input.type = "date"; input.value = entry.date;
+    }
+    span.textContent = "";
+    span.appendChild(input);
+    input.focus();
+    if (input.select) input.select();
+
+    var done = false;
+    function restaurar() { span.textContent = original; }
+    function salvar() {
+      if (done) return;
+      done = true;
+      if (field === "valor") {
+        var novoValor = parseFloat(input.value);
+        if (isNaN(novoValor) || novoValor === entry.value) { restaurar(); return; }
+        span.textContent = "…";
+        salvarEdicaoValor(recordId, novoValor);
+      } else {
+        var novaData = input.value;
+        if (!novaData || novaData === entry.date) { restaurar(); return; }
+        span.textContent = "…";
+        salvarEdicaoData(recordId, novaData);
+      }
+    }
+    input.onblur = salvar;
+    input.onkeydown = function (e) {
+      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      if (e.key === "Escape") { e.preventDefault(); done = true; restaurar(); }
+    };
+  }
+
   function renderEntries(id, entries) {
     var list = document.getElementById("entriesList");
     if (entries.length === 0) {
@@ -646,14 +780,17 @@
         var dateFmt = v.date ? v.date.split("-").reverse().slice(0, 2).join("/") : "";
         var parcelaTxt = v.parcelaAtual && v.parcelaTotal ? " (Parc " + v.parcelaAtual + "/" + v.parcelaTotal + ")" : "";
         html += '<div class="entry' + (v.paid ? "" : " pending") + '">' +
-          '<input type="checkbox" class="pago-toggle" data-id="' + v.id + '" title="Marcar como pago"' + (v.paid ? " checked" : "") + '>' +
+          '<label class="pago-toggle-wrap">' +
+          '<input type="checkbox" class="pago-toggle" data-id="' + v.id + '" aria-label="Marcar lançamento como pago"' + (v.paid ? " checked" : "") + '>' +
+          '</label>' +
           '<div class="info">' +
-          '<div class="date">' + dateFmt + '<span class="tag">' + catShort(v.category) + '</span>' +
+          '<div class="date"><span class="editable" data-id="' + v.id + '" data-field="data">' + dateFmt + '</span>' +
+          '<span class="tag">' + catShort(v.category) + '</span>' +
           (v.paid ? "" : '<span class="tag pendente">Pendente</span>') + '</div>' +
           '<div class="reason">' + escapeHtml(v.reason || "") + escapeHtml(parcelaTxt) + '</div>' +
           '</div>' +
           '<div class="right">' +
-          '<div class="value">' + brl(v.value) + '</div>' +
+          '<div class="value"><span class="editable" data-id="' + v.id + '" data-field="valor">' + brl(v.value) + '</span></div>' +
           '<div class="payer">' + escapeHtml(v.payer || "") + '</div>' +
           '<button class="danger" data-id="' + v.id + '">excluir</button>' +
           '</div>' +
@@ -664,16 +801,40 @@
         chk.onchange = function () {
           var recordId = chk.getAttribute("data-id");
           var novoValor = chk.checked;
+          var entry = currentEntries.filter(function (e) { return e.id === recordId; })[0];
+          var mesInfo = monthsCache[id];
+          var delta = entry ? (novoValor ? 1 : -1) * entry.value : 0;
+          var row = chk.closest(".entry");
+
+          if (entry) entry.paid = novoValor;
+          setRowPaidVisual(row, novoValor);
+          if (mesInfo) {
+            mesInfo.totalPago += delta;
+            if (mesInfo.saldo != null) mesInfo.saldo -= delta;
+            updateStatsDisplay(mesInfo);
+          }
+
           chk.disabled = true;
           setPago(recordId, novoValor).then(function () {
             hideOffline();
-            return loadMeses().then(function () { return refreshMonthView(id); });
+            chk.disabled = false;
           }).catch(function (e) {
             console.error(e);
-            chk.disabled = false; chk.checked = !novoValor;
+            if (entry) entry.paid = !novoValor;
+            setRowPaidVisual(row, !novoValor);
+            chk.checked = !novoValor;
+            if (mesInfo) {
+              mesInfo.totalPago -= delta;
+              if (mesInfo.saldo != null) mesInfo.saldo += delta;
+              updateStatsDisplay(mesInfo);
+            }
+            chk.disabled = false;
             showOffline("Não foi possível atualizar (" + e.message + ").");
           });
         };
+      });
+      Array.prototype.forEach.call(list.querySelectorAll(".editable"), function (span) {
+        span.onclick = function () { ativarEdicaoInline(span); };
       });
       Array.prototype.forEach.call(list.querySelectorAll("button.danger"), function (btn) {
         btn.onclick = function () {
@@ -695,13 +856,7 @@
     }
 
     var mesInfo = monthsCache[id] || { valorMes: 0, totalPago: 0, saldo: 0 };
-    document.getElementById("valorMesInput").value = mesInfo.valorMes;
-    document.getElementById("statValorMes").textContent = brl(mesInfo.valorMes);
-    document.getElementById("statPago").textContent = brl(mesInfo.totalPago);
-    var saldo = mesInfo.saldo == null ? mesInfo.valorMes - mesInfo.totalPago : mesInfo.saldo;
-    var saldoEl = document.getElementById("statSaldo");
-    saldoEl.textContent = brl(saldo);
-    saldoEl.className = "val " + (saldo < 0 ? "neg" : (saldo > 0 ? "pos" : ""));
+    updateStatsDisplay(mesInfo);
 
     var info = computeWeeklySuggestion(id, entries);
     currentPendentesInfo = info;
@@ -724,7 +879,7 @@
       ids.forEach(function (id) {
         var r = monthsCache[id];
         var saldo = r.saldo == null ? r.valorMes - r.totalPago : r.saldo;
-        html += '<div class="overview-row" data-month="' + id + '">' +
+        html += '<div class="overview-row' + (saldo < 0 ? ' negative' : '') + '" data-month="' + id + '">' +
           '<div><div class="m">' + monthLabel(id) + '</div>' +
           '<div class="sub2">Pago ' + brl(r.totalPago) + ' de ' + brl(r.valorMes) + '</div></div>' +
           '<div style="text-align:right; font-weight:700; color:' + (saldo < 0 ? 'var(--neg)' : (saldo > 0 ? 'var(--pos)' : 'inherit')) + ';">' + brl(saldo) + '</div>' +
