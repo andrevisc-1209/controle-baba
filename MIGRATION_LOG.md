@@ -115,3 +115,60 @@ confirmada via `list_records_for_table`). `migrate_to_airtable.py` continua
 disponível no repo com `--dry-run`/`--fix-month-from-date` para reexecuções
 futuras (é idempotente por `OrigemImportID`, então rodá-lo agora não duplica
 nada do que já foi criado).
+
+## 5. Mudança de paradigma: de "registro do pago" para "checklist do a pagar" (2026-09-18)
+
+Decisão: os lançamentos deixam de representar só o que já foi pago e passam
+a poder existir como **previstos** (sextas do mês, parcelas futuras) até
+serem marcados como pagos de fato.
+
+### Schema (Airtable)
+
+- Novo campo **`Pago`** (checkbox) em `Lancamentos` (`fldvhbCWJ3jzRADaY`).
+  Default é `false` — no Airtable, um checkbox desmarcado simplesmente não
+  grava o campo (fica ausente no retorno da API), então qualquer lançamento
+  novo já nasce "não pago" sem precisar de nenhuma lógica extra.
+- Novo campo **`ValorPago`** (fórmula) em `Lancamentos`: `IF({Pago}, {Valor}, 0)`.
+  Existe só pra alimentar o rollup abaixo — o rollup do Airtable soma valores
+  de UM campo dos registros linkados, não tem como ele mesmo filtrar por um
+  segundo campo (`Pago`), daí precisar desse campo intermediário.
+- O rollup antigo `TotalPago` em `Meses` (que somava `Valor` de tudo) foi
+  **renomeado para `TotalLancado`** e mantido (representa o total previsto,
+  pago ou não — pode ser útil).
+- Um rollup **novo** com o nome `TotalPago` foi criado em `Meses`, apontando
+  pra `ValorPago` em vez de `Valor` — assim só soma o que está marcado como
+  pago. `Saldo` foi reapontado pra usar esse novo `TotalPago`.
+- Testado com registros de teste (criados e removidos): `Pago=false` →
+  `TotalPago=0`; `Pago=true` → soma corretamente.
+
+### Migração dos 133 lançamentos existentes
+
+Dry-run mostrou uma ambiguidade **diferente** da dos óculos: a regra literal
+que eu tinha combinado ("mês atual — set/2026 — em diante vira Pago=false")
+marcaria como não-pagos 6 lançamentos de setembro/2026 que **já tinham
+acontecido de verdade** (dia 18/09 é hoje). Perguntei e você decidiu usar a
+**data exata**, não o mês, como corte:
+
+> `Pago = true` se `Data <= 2026-09-18` (hoje), senão `Pago = false`.
+
+Resultado aplicado: **125 lançamentos → Pago=true**, **8 → Pago=false**
+(a sexta de 25/09/2026 + as 7 parcelas futuras dos óculos, out/2026 a
+abr/2027). Setembro/2026 passou a mostrar Pago R$2.180 / Saldo R$320
+(só a sexta de 25/09 pendente); outubro/2026 mostra Pago R$0 / Saldo
+R$2.500 (a parcela do mês ainda não paga) — confirmado visualmente no app.
+
+### Front-end (`index.html` / `app.js`)
+
+- Cada lançamento na lista ganhou um checkbox clicável (`.pago-toggle`) que
+  faz `PATCH` direto no Airtable ao mudar, sem formulário separado — testado
+  no navegador (marca, saldo recalcula na hora; desmarca, volta).
+- Lançamento não pago: linha com opacidade reduzida (`.entry.pending`) +
+  selo "Pendente" ao lado da categoria.
+- Geração de pagamentos de sexta e propagação de parcelas continuam com a
+  mesma lógica de antes (cálculo de sugestão semanal inalterado, conforme
+  pedido), só passaram a gravar `Pago=false` explicitamente nos lançamentos
+  futuros que criam (funcionalmente já seria `false` por omissão, mas deixei
+  explícito no código pra ficar claro que é intencional).
+- `TotalPago`/`Saldo` no card de estatísticas continuam vindo direto do
+  Airtable (nenhuma mudança de código necessária ali — o filtro por `Pago`
+  já acontece no rollup, na origem).
