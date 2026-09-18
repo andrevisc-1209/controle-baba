@@ -387,9 +387,24 @@
     var fridays = getFridaysOfMonth(mesId);
     currentFridays = fridays;
     var pendentes = fridays.filter(function (f) { return !semanaisPagas[mondayOf(f)]; });
-    var restanteCents = Math.round(mesInfo.valorMes * 100) - dividasCents;
+
+    // Saldo acumulado do mes anterior entra na conta so a partir do mes atual em
+    // diante (nada retroativo). Saldo = ValorMensal - TotalPago, entao positivo
+    // significa que ainda devia (soma a necessidade de pagamento) e negativo
+    // significa que pagou a mais (abate). Por isso e SOMA, nao subtracao.
+    var aplicaAcumulado = mesId >= currentMonthKey();
+    var saldoAcumuladoAnterior = 0;
+    if (aplicaAcumulado) {
+      var mesAnteriorId = addMonths(mesId, -1);
+      var acumuladoPorMes = computeSaldoAcumulado();
+      saldoAcumuladoAnterior = acumuladoPorMes[mesAnteriorId] || 0;
+    }
+    var restanteCents = Math.round(mesInfo.valorMes * 100) - dividasCents + Math.round(saldoAcumuladoAnterior * 100);
 
     var text, values = [];
+    var acumuladoTxt = (aplicaAcumulado && saldoAcumuladoAnterior !== 0)
+      ? " · inclui " + brl(saldoAcumuladoAnterior) + " de saldo acumulado do mês anterior"
+      : "";
     if (pendentes.length > 0) {
       var n = pendentes.length;
       var baseCents = Math.floor(restanteCents / n);
@@ -403,13 +418,13 @@
         values.push(baseCents + extra);
       }
       var weeklyDisplay = values[0] / 100;
-      text = "Semana sugerida: " + brl(weeklyDisplay) + " × " + n + " sexta(s) pendente(s) — dívidas do mês: " + brl(dividasCents / 100);
+      text = "Semana sugerida: " + brl(weeklyDisplay) + " × " + n + " sexta(s) pendente(s) — dívidas do mês: " + brl(dividasCents / 100) + acumuladoTxt;
     } else {
       text = fridays.length > 0
         ? "Todas as sextas já lançadas — dívidas do mês: " + brl(dividasCents / 100)
         : "Semana sugerida: —";
     }
-    return { pendentes: pendentes, valuesCents: values, text: text, dividasCents: dividasCents, restanteCents: restanteCents };
+    return { pendentes: pendentes, valuesCents: values, text: text, dividasCents: dividasCents, restanteCents: restanteCents, saldoAcumuladoAnterior: saldoAcumuladoAnterior };
   }
 
   // ================== UI ==================

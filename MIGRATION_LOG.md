@@ -332,3 +332,60 @@ Aplicado em `app.js`/`index.html`: nova linha "Saldo acumulado até este
 mês" na aba Mês, e uma linha "Acumulado" por mês na Visão geral. Testado
 no navegador: os valores batem exatos com a tabela do dry-run (ex:
 Set/2026 = -R$721,52, Dez/2026 = R$6.418,48).
+
+## 9. Saldo acumulado passa a influenciar a sugestão semanal (2026-09-18)
+
+Pedido: a sugestão de pagamento semanal (item 8 acima, hoje só
+informativa) passa a considerar o saldo acumulado do mês anterior como
+parte do cálculo, só daqui pra frente (sem retroagir).
+
+### Sinal conferido antes de aplicar — estava invertido no pedido original
+
+O pedido descrevia a fórmula como `ValorMensal - dívidas - SaldoAcumulado`
+(subtração) e explicava "saldo negativo = devendo, deveria aumentar a
+sugestão". Conferindo contra como `Saldo` é calculado (`ValorMensal -
+TotalPago`): **negativo** na verdade significa que **pagou a mais**
+(crédito), e **positivo** significa que **ainda deve**. É o oposto do que
+o pedido assumia.
+
+Aplicada a fórmula com o sinal corrigido pra bater com o comportamento de
+negócio pretendido (crédito abate, dívida soma):
+
+```
+restante = ValorMensal - dívidas do mês + SaldoAcumulado do mês anterior
+valor semanal sugerido = restante / sextas pendentes
+```
+
+(**soma**, não subtração — usar subtração aqui teria invertido a lógica
+de novo, fazendo um mês que entra com crédito sugerir *mais* pagamento em
+vez de menos.)
+
+### Só daqui pra frente
+
+`aplicaAcumulado = mesId >= mês atual` — meses antes do mês corrente
+nunca entram nesse cálculo, mesmo que por algum motivo ainda tivessem
+sextas pendentes. Na prática isso quase nunca importa pra meses já
+fechados (eles já não mostram sugestão semanal, só "Todas as sextas já
+lançadas"), mas o código garante isso explicitamente de qualquer forma.
+
+### Cenários testados (dados reais da base, sem escrever nada)
+
+| Mês | Acumulado do mês anterior | Sugestão antes | Sugestão depois |
+|---|---|---|---|
+| Out/2026 (entra em crédito) | -R$721,52 | R$476,00/semana | **R$331,69/semana** (abateu) |
+| Nov/2026 (entra devendo) | +R$1.658,48 | R$595,00/semana | **R$1.009,62/semana** (aumentou) |
+| Ago/2026 (mês fechado, passado) | — | R$0,00 (todas já lançadas) | **inalterado**, sem nota de acumulado |
+
+Testado no navegador nos três meses acima antes de publicar. Nenhum
+lançamento, campo `Pago` ou dado na base foi alterado — é só a fórmula de
+exibição da sugestão, calculada ao vivo, sem gravação nenhuma.
+
+### Nota pro usuário
+
+O texto da sugestão agora mostra "· inclui RX de saldo acumulado do mês
+anterior" quando aplicável. Essa frase é diferente da linha separada
+"Saldo acumulado até este mês" (do item 8) — uma é o acumulado *até o mês
+anterior* (usado na conta), a outra é o acumulado *até o mês atual,
+incluindo ele* (só informativo). São números diferentes por design, mas
+ficam visualmente próximos na tela — se isso causar confusão no uso real,
+vale considerar reformular a exibição depois.
