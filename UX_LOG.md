@@ -3,6 +3,24 @@
 Histórico de mudanças na interface (`index.html`/`app.js`). Separado do
 `MIGRATION_LOG.md`, que documenta schema e dados no Airtable.
 
+## Rodada 4 — parcelamento por valor total (2026-10-09)
+
+- O formulário de novo lançamento trocou o campo de texto "3/12" por **Nº de
+  parcelas** (opcional) e **Parcela atual** (opcional, padrão 1). O campo
+  "Valor" vira **"Valor total"** quando há 2+ parcelas, e uma prévia mostra
+  "12x de R$ 120,00" (ou "2x de R$ 33,33 + 1x de R$ 33,34" quando não divide
+  exato).
+- A divisão é feita em centavos; a diferença vai para as **últimas** parcelas,
+  então a soma sempre fecha com o total. A parcela atual define de onde a série
+  começa (compras já em andamento continuam possíveis).
+- Regras mantidas: parcela nasce paga; a primeira usa a data digitada e as
+  seguintes caem no dia 1 de cada mês seguinte; nada do passado foi alterado.
+- `propagateInstallments` agora recebe o valor de cada parcela (array em
+  centavos) em vez de um valor único.
+- Testado: R$100 em 3x começando na parcela 2 gerou 2/3 = R$33,33 e
+  3/3 = R$33,34, ambas pagas; testes removidos e base conferida (132
+  lançamentos, R$42.461,52, 27 meses).
+
 ## Rodada 3 — saldo acumulado exibido (2026-09-18)
 
 Item 1 de uma lista de 3 melhorias (itens 2 e 3 na Rodada 2 abaixo). O

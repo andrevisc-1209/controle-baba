@@ -389,3 +389,18 @@ anterior* (usado na conta), a outra é o acumulado *até o mês atual,
 incluindo ele* (só informativo). São números diferentes por design, mas
 ficam visualmente próximos na tela — se isso causar confusão no uso real,
 vale considerar reformular a exibição depois.
+
+
+## 10. Sugestão semanal volta a ignorar o saldo acumulado (2026-10-09)
+
+Decisão do usuário: o saldo acumulado é **só um controle**. Ele reflete algo
+do passado (ex: uma diária a mais) e não deve intervir no valor do mês.
+Revertida a mudança da seção 9:
+
+- `computeWeeklySuggestion` voltou a `restante = ValorMensal - dívidas do mês`,
+  dividido pelas sextas pendentes. Removidos o termo do saldo acumulado, o
+  guard `mesId >= mês atual` e a frase "inclui RX de saldo acumulado".
+- Mantidas só as exibições informativas da seção 8 (linha "Saldo acumulado até
+  este mês" na aba Mês e "Acumulado" na Visão geral).
+- Nenhum dado da base foi alterado (a sugestão é calculada ao vivo).
+- Testado: Out/2026 voltou a mostrar R$476,00 × 5 sextas, sem a nota de acumulado.

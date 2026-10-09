@@ -213,7 +213,7 @@
             <input type="date" id="fDate" required>
           </div>
           <div class="field">
-            <label>Valor (R$)</label>
+            <label id="fValorLabel">Valor (R$)</label>
             <input type="number" id="fValor" step="0.01" required>
           </div>
           <div class="field">
@@ -226,7 +226,7 @@
             </select>
           </div>
         </div>
-        <div class="row2">
+        <div class="row3">
           <div class="field">
             <label>Quem pagou</label>
             <select id="fPayer">
@@ -235,10 +235,15 @@
             </select>
           </div>
           <div class="field">
-            <label>Parcela (opcional, ex: 3/12)</label>
-            <input type="text" id="fParcela" placeholder="ex: 3/12">
+            <label>Nº de parcelas (opcional)</label>
+            <input type="number" id="fParcelasQtd" min="2" step="1" inputmode="numeric" placeholder="ex: 12">
+          </div>
+          <div class="field">
+            <label>Parcela atual (padrão 1)</label>
+            <input type="number" id="fParcelaAtual" min="1" step="1" inputmode="numeric" placeholder="1">
           </div>
         </div>
+        <div id="fParcelaPreview" style="font-size:.8rem; color:var(--muted); display:none;"></div>
         <div class="field">
           <label>Descrição / motivo</label>
           <input type="text" id="fReason" placeholder="ex: Geladeira, valor semanal...">

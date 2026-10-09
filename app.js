@@ -337,7 +337,7 @@
   }
 
   // ---- propagacao de parcelas (campos estruturados + idempotencia) ----
-  function propagateInstallments(motivo, value, payer, categoria, startMonthId, currentNum, total, grupoParcela, onProgress) {
+  function propagateInstallments(motivo, valuesCents, payer, categoria, startMonthId, currentNum, total, grupoParcela, onProgress) {
     var valorMesFallback = (monthsCache[startMonthId] || {}).valorMes || 2500;
     var stepsRemaining = total - currentNum;
     var plan = [];
@@ -355,7 +355,7 @@
           return ensureMonthRecord(p.monthId, valorMesFallback).then(function (mesInfo) {
             var fields = {};
             fields[F.lanc.data] = p.monthId + "-01";
-            fields[F.lanc.valor] = value;
+            fields[F.lanc.valor] = valuesCents[p.num - 1] / 100;
             fields[F.lanc.categoria] = categoria;
             fields[F.lanc.quemPagou] = payer;
             fields[F.lanc.motivo] = motivo;
@@ -388,23 +388,9 @@
     currentFridays = fridays;
     var pendentes = fridays.filter(function (f) { return !semanaisPagas[mondayOf(f)]; });
 
-    // Saldo acumulado do mes anterior entra na conta so a partir do mes atual em
-    // diante (nada retroativo). Saldo = ValorMensal - TotalPago, entao positivo
-    // significa que ainda devia (soma a necessidade de pagamento) e negativo
-    // significa que pagou a mais (abate). Por isso e SOMA, nao subtracao.
-    var aplicaAcumulado = mesId >= currentMonthKey();
-    var saldoAcumuladoAnterior = 0;
-    if (aplicaAcumulado) {
-      var mesAnteriorId = addMonths(mesId, -1);
-      var acumuladoPorMes = computeSaldoAcumulado();
-      saldoAcumuladoAnterior = acumuladoPorMes[mesAnteriorId] || 0;
-    }
-    var restanteCents = Math.round(mesInfo.valorMes * 100) - dividasCents + Math.round(saldoAcumuladoAnterior * 100);
+    var restanteCents = Math.round(mesInfo.valorMes * 100) - dividasCents;
 
     var text, values = [];
-    var acumuladoTxt = (aplicaAcumulado && saldoAcumuladoAnterior !== 0)
-      ? " · inclui " + brl(saldoAcumuladoAnterior) + " de saldo acumulado do mês anterior"
-      : "";
     if (pendentes.length > 0) {
       var n = pendentes.length;
       var baseCents = Math.floor(restanteCents / n);
@@ -418,13 +404,13 @@
         values.push(baseCents + extra);
       }
       var weeklyDisplay = values[0] / 100;
-      text = "Semana sugerida: " + brl(weeklyDisplay) + " × " + n + " sexta(s) pendente(s) — dívidas do mês: " + brl(dividasCents / 100) + acumuladoTxt;
+      text = "Semana sugerida: " + brl(weeklyDisplay) + " × " + n + " sexta(s) pendente(s) — dívidas do mês: " + brl(dividasCents / 100);
     } else {
       text = fridays.length > 0
         ? "Todas as sextas já lançadas — dívidas do mês: " + brl(dividasCents / 100)
         : "Semana sugerida: —";
     }
-    return { pendentes: pendentes, valuesCents: values, text: text, dividasCents: dividasCents, restanteCents: restanteCents, saldoAcumuladoAnterior: saldoAcumuladoAnterior };
+    return { pendentes: pendentes, valuesCents: values, text: text, dividasCents: dividasCents, restanteCents: restanteCents };
   }
 
   // ================== UI ==================
@@ -555,6 +541,45 @@
     });
   };
 
+  // ---- parcelamento: valor total / quantidade, centavos extras nas ultimas parcelas ----
+  function splitInstallmentsCents(totalValor, qtd) {
+    var totalCents = Math.round(totalValor * 100);
+    var base = Math.floor(totalCents / qtd);
+    var rem = totalCents - base * qtd;
+    var values = [];
+    for (var i = 0; i < qtd; i++) values.push(base + (i >= qtd - rem ? 1 : 0));
+    return values;
+  }
+  function updateParcelaPreview() {
+    var qtd = parseInt(document.getElementById("fParcelasQtd").value, 10);
+    var valor = parseFloat(document.getElementById("fValor").value);
+    var atual = parseInt(document.getElementById("fParcelaAtual").value, 10) || 1;
+    var prev = document.getElementById("fParcelaPreview");
+    var label = document.getElementById("fValorLabel");
+    if (!(qtd >= 2)) {
+      label.textContent = "Valor (R$)";
+      prev.style.display = "none";
+      return;
+    }
+    label.textContent = "Valor total (R$)";
+    if (isNaN(valor) || valor <= 0) { prev.style.display = "none"; return; }
+    var vals = splitInstallmentsCents(valor, qtd);
+    var first = vals[0], last = vals[qtd - 1];
+    var txt = first === last
+      ? qtd + "x de " + brl(first / 100)
+      : (qtd - 1) + "x de " + brl(first / 100) + " + 1x de " + brl(last / 100);
+    if (vals.filter(function (v) { return v === last; }).length > 1 && first !== last) {
+      var nLast = vals.filter(function (v) { return v === last; }).length;
+      txt = (qtd - nLast) + "x de " + brl(first / 100) + " + " + nLast + "x de " + brl(last / 100);
+    }
+    if (atual > 1 && atual <= qtd) txt += " — começando na parcela " + atual + "/" + qtd;
+    prev.textContent = txt;
+    prev.style.display = "";
+  }
+  ["fParcelasQtd", "fValor", "fParcelaAtual"].forEach(function (id) {
+    document.getElementById(id).addEventListener("input", updateParcelaPreview);
+  });
+
   document.getElementById("addForm").addEventListener("submit", function (e) {
     e.preventDefault();
     var submitBtn = document.getElementById("submitAddBtn");
@@ -564,16 +589,17 @@
     var valor = parseFloat(document.getElementById("fValor").value);
     var categoria = document.getElementById("fCategoria").value;
     var payer = document.getElementById("fPayer").value;
-    var parcela = document.getElementById("fParcela").value.trim();
+    var qtdParcelas = parseInt(document.getElementById("fParcelasQtd").value, 10);
     var reason = document.getElementById("fReason").value.trim();
     if (!date || isNaN(valor)) { showAlert("Preencha data e valor."); return; }
 
-    var parcelaMatch = parcela.match(/^(\d+)\s*\/\s*(\d+)$/);
-    var atual = null, total = null, grupo = null;
-    if (parcelaMatch) {
-      atual = parseInt(parcelaMatch[1], 10);
-      total = parseInt(parcelaMatch[2], 10);
-      if (total <= atual) { showAlert("Na parcela, o total deve ser maior que a atual (ex: 3/12)."); return; }
+    var atual = null, total = null, grupo = null, valuesCents = null, valorLancamento = valor;
+    if (qtdParcelas >= 2) {
+      total = qtdParcelas;
+      atual = parseInt(document.getElementById("fParcelaAtual").value, 10) || 1;
+      if (atual < 1 || atual > total) { showAlert("A parcela atual deve estar entre 1 e " + total + "."); return; }
+      valuesCents = splitInstallmentsCents(valor, total);
+      valorLancamento = valuesCents[atual - 1] / 100;
       grupo = slugify(payer) + "-" + slugify(reason || categoria) + "-" + total;
     }
 
@@ -587,7 +613,7 @@
     ensureMonthRecord(mesIdFromDate, fallbackValorMes).then(function (mesInfo) {
       var fields = {};
       fields[F.lanc.data] = date;
-      fields[F.lanc.valor] = valor;
+      fields[F.lanc.valor] = valorLancamento;
       fields[F.lanc.categoria] = categoria;
       fields[F.lanc.quemPagou] = payer;
       fields[F.lanc.motivo] = reason || categoria;
@@ -612,7 +638,7 @@
 
       return createFirst.then(function () {
         if (atual != null && total > atual) {
-          return propagateInstallments(reason || categoria, valor, payer, categoria, mesIdFromDate, atual, total, grupo, function (i, totalPend) {
+          return propagateInstallments(reason || categoria, valuesCents, payer, categoria, mesIdFromDate, atual, total, grupo, function (i, totalPend) {
             submitBtn.textContent = "Criando parcela " + i + "/" + totalPend + "…";
           });
         }
@@ -625,6 +651,7 @@
       document.getElementById("addForm").reset();
       document.getElementById("fDate").value = todayISO();
       aplicarUltimaCategoria();
+      updateParcelaPreview();
       addOpen = false; addCard.style.display = "none";
       toggleAddBtn.textContent = "+ Adicionar lançamento";
       submitBtn.disabled = false; submitBtn.textContent = "Salvar lançamento";
