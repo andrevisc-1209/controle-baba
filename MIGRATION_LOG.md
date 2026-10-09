@@ -404,3 +404,27 @@ Revertida a mudança da seção 9:
   este mês" na aba Mês e "Acumulado" na Visão geral).
 - Nenhum dado da base foi alterado (a sugestão é calculada ao vivo).
 - Testado: Out/2026 voltou a mostrar R$476,00 × 5 sextas, sem a nota de acumulado.
+
+## 11. Correção da sugestão semanal: descontar semanais já pagas (2026-10-09)
+
+Erro encontrado em Out/2026: a sugestão era `(ValorMensal - dívidas) / sextas`
+e **ignorava as semanais já pagas no mês** (R$476,00 em 02/10). Resultado:
+R$548,80/semana, quando o certo era (2.500 − 304,80 − 476,00) / 4 = **R$429,80**
+(o mesmo valor do Saldo do mês, R$1.719,20, dividido pelas 4 sextas que faltam).
+
+Correções em `computeWeeklySuggestion`:
+- `restante = ValorMensal − dívidas (lançamentos não semanais) − semanais já pagas`.
+- Divisor passa a ser as sextas **que ainda faltam pagar** (sem lançamento ou com
+  lançamento semanal ainda não pago), e não só as sem lançamento. Antes, depois
+  de "Gerar sextas" a sugestão sumia ("Todas as sextas já lançadas").
+- O botão "Gerar" continua criando só as sextas sem lançamento, usando o valor
+  calculado para a posição de cada sexta.
+- Texto novo: "× N sexta(s) restante(s) … · semanais já pagas: RX".
+
+Dados: os 4 lançamentos semanais **pendentes** de Out/2026 (09, 16, 23 e 30/10)
+tinham sido gerados com R$548,80; ajustados para R$429,80 (nenhum pago foi
+tocado). Conferido: lançamentos de outubro somam R$2.500,00 e o Saldo segue
+R$1.719,20.
+
+Observação: meses antigos que já tinham menos semanais que sextas (ex: Mai/2025,
+Dez/2025) continuam mostrando uma sugestão residual — é histórico, não novo.

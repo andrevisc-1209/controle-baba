@@ -376,41 +376,53 @@
   function computeWeeklySuggestion(mesId, entries) {
     var mesInfo = monthsCache[mesId] || { valorMes: 0 };
     var dividasCents = 0;
-    var semanaisPagas = {}; // segunda-da-semana -> true
+    var semanaisPagasCents = 0;
+    var semanaisExistentes = {}; // segunda-da-semana -> ja tem lancamento semanal (pago ou nao)
+    var semanaisPagas = {}; // segunda-da-semana -> ja tem semanal PAGO
     entries.forEach(function (e) {
       if (e.category === "Semanal") {
-        semanaisPagas[mondayOf(e.date)] = true;
+        var w = mondayOf(e.date);
+        semanaisExistentes[w] = true;
+        if (e.paid) {
+          semanaisPagas[w] = true;
+          semanaisPagasCents += Math.round(e.value * 100);
+        }
       } else {
         dividasCents += Math.round(e.value * 100);
       }
     });
     var fridays = getFridaysOfMonth(mesId);
     currentFridays = fridays;
-    var pendentes = fridays.filter(function (f) { return !semanaisPagas[mondayOf(f)]; });
+    // sextas sem lancamento nenhum (e o que o botao "Gerar" cria)
+    var pendentes = fridays.filter(function (f) { return !semanaisExistentes[mondayOf(f)]; });
+    // sextas que ainda faltam pagar (sem lancamento ou com lancamento ainda nao pago)
+    var aPagar = fridays.filter(function (f) { return !semanaisPagas[mondayOf(f)]; });
+    // O que sobra do mes depois das dividas e das semanais ja pagas, dividido pelas que faltam
+    var restanteCents = Math.round(mesInfo.valorMes * 100) - dividasCents - semanaisPagasCents;
 
-    var restanteCents = Math.round(mesInfo.valorMes * 100) - dividasCents;
-
-    var text, values = [];
-    if (pendentes.length > 0) {
-      var n = pendentes.length;
+    var text, values = [], valuesByDate = {};
+    if (aPagar.length > 0) {
+      var n = aPagar.length;
       var baseCents = Math.floor(restanteCents / n);
       var remainder = restanteCents - baseCents * n; // 0..n-1, pode ser negativo se restante<0
-      // distribui o resto (ou o deficit) nas ultimas parcelas, 1 centavo por vez
+      // distribui o resto (ou o deficit) nas ultimas sextas, 1 centavo por vez
       for (var i = 0; i < n; i++) {
         var extra = 0;
         var fromEnd = n - i;
         if (remainder > 0 && fromEnd <= remainder) extra = 1;
         if (remainder < 0 && fromEnd <= -remainder) extra = -1;
         values.push(baseCents + extra);
+        valuesByDate[aPagar[i]] = baseCents + extra;
       }
       var weeklyDisplay = values[0] / 100;
-      text = "Semana sugerida: " + brl(weeklyDisplay) + " × " + n + " sexta(s) pendente(s) — dívidas do mês: " + brl(dividasCents / 100);
+      text = "Semana sugerida: " + brl(weeklyDisplay) + " × " + n + " sexta(s) restante(s) — dívidas do mês: " + brl(dividasCents / 100);
+      if (semanaisPagasCents > 0) text += " · semanais já pagas: " + brl(semanaisPagasCents / 100);
     } else {
       text = fridays.length > 0
-        ? "Todas as sextas já lançadas — dívidas do mês: " + brl(dividasCents / 100)
+        ? "Todas as sextas já pagas — dívidas do mês: " + brl(dividasCents / 100)
         : "Semana sugerida: —";
     }
-    return { pendentes: pendentes, valuesCents: values, text: text, dividasCents: dividasCents, restanteCents: restanteCents };
+    return { pendentes: pendentes, aPagar: aPagar, valuesCents: values, valuesByDate: valuesByDate, text: text, dividasCents: dividasCents, restanteCents: restanteCents };
   }
 
   // ================== UI ==================
@@ -518,7 +530,7 @@
           if (existing[origemId]) return; // ja foi gerado, evita duplicata
           var fields = {};
           fields[F.lanc.data] = date;
-          fields[F.lanc.valor] = info.valuesCents[idx] / 100;
+          fields[F.lanc.valor] = info.valuesByDate[date] / 100;
           fields[F.lanc.categoria] = "Semanal";
           fields[F.lanc.quemPagou] = "André";
           fields[F.lanc.motivo] = "Valor semanal";
